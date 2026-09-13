@@ -57,6 +57,10 @@ The filtered results are real bank items—not decorative copies—so normal ban
 - Disabling the plugin restores the normal bank view.
 - Loot Bank Highlighter is a third-party Plugin Hub plugin and is not maintained by the RuneLite developers.
 
+## Support development
+
+Loot Bank Highlighter is free and all features are available to everyone. If the plugin has helped you and you would like to support continued development, you can [buy me a coffee](https://buymeacoffee.com/ebpicgamer). Contributions are entirely optional and do not unlock additional features.
+
 ## Support and feedback
 
 Found a reproducible bug or have a feature suggestion? Please [open an issue](https://github.com/ebpicgamer-spec/loot-bank-highlighter/issues).
