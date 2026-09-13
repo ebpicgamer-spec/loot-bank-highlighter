@@ -188,7 +188,7 @@ public class LootBankHighlighterPlugin extends Plugin
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
-		if (event.getGroupId() == InterfaceID.BANK && !selectedSources.isEmpty() && activeTabSource == null)
+		if (event.getGroupId() == InterfaceID.BANKMAIN && !selectedSources.isEmpty() && activeTabSource == null)
 		{
 			activateTabView(selectedSources.iterator().next());
 		}
