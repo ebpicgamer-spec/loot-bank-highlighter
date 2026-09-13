@@ -1,0 +1,209 @@
+package com.lootbankhighlighter;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.image.BufferedImage;
+import java.util.Map;
+import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.SwingConstants;
+import net.runelite.client.callback.ClientThread;
+import net.runelite.client.game.ItemManager;
+import net.runelite.client.util.AsyncBufferedImage;
+import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
+import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.util.ImageUtil;
+import net.runelite.client.util.QuantityFormatter;
+
+/**
+ * Lists tracked loot sources the way the built-in Loot Tracker does: source
+ * name, kill count, and every distinct item received with its icon and
+ * quantity - plus an eye toggle to pin a source for the bank filter view.
+ */
+public class LootBankHighlighterPanel extends PluginPanel
+{
+	private final LootBankHighlighterPlugin plugin;
+	private final ItemManager itemManager;
+	private final ClientThread clientThread;
+	private final JPanel listContainer = new JPanel();
+
+	private BufferedImage eyeOpenIcon;
+	private BufferedImage eyeClosedIcon;
+	private BufferedImage panelIcon;
+
+	public LootBankHighlighterPanel(LootBankHighlighterPlugin plugin, ItemManager itemManager, ClientThread clientThread)
+	{
+		super(false);
+		this.plugin = plugin;
+		this.itemManager = itemManager;
+		this.clientThread = clientThread;
+
+		setLayout(new BorderLayout());
+		setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+		try
+		{
+			eyeOpenIcon = ImageUtil.loadImageResource(getClass(), "eye_open.png");
+			eyeClosedIcon = ImageUtil.loadImageResource(getClass(), "eye_closed.png");
+			panelIcon = ImageUtil.loadImageResource(getClass(), "loot_bank_icon.png");
+		}
+		catch (Exception ignored)
+		{
+		}
+
+		JPanel titlePanel = new JPanel(new BorderLayout());
+		titlePanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		titlePanel.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+
+		if (panelIcon != null)
+		{
+			JLabel iconLabel = new JLabel(new ImageIcon(panelIcon));
+			titlePanel.add(iconLabel, BorderLayout.WEST);
+		}
+
+		JLabel title = new JLabel("Pin a source to filter it into your bank");
+		title.setFont(FontManager.getRunescapeSmallFont());
+		title.setForeground(Color.WHITE);
+		titlePanel.add(title, BorderLayout.CENTER);
+
+		add(titlePanel, BorderLayout.NORTH);
+
+		listContainer.setLayout(new BoxLayout(listContainer, BoxLayout.Y_AXIS));
+		listContainer.setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+		JScrollPane scrollPane = new JScrollPane(listContainer);
+		scrollPane.setBorder(BorderFactory.createEmptyBorder());
+		scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+		add(scrollPane, BorderLayout.CENTER);
+
+		rebuild();
+	}
+
+	public void rebuild()
+	{
+		listContainer.removeAll();
+
+		plugin.getLootRecords().values().stream()
+			.filter(r -> !r.isEmpty())
+			.sorted((a, b) -> Long.compare(b.getLastUpdatedMillis(), a.getLastUpdatedMillis()))
+			.forEach(record -> listContainer.add(buildSourcePanel(record)));
+
+		if (plugin.getLootRecords().isEmpty())
+		{
+			JLabel empty = new JLabel("<html>No loot tracked yet.<br>Kill something and it'll show up here.</html>");
+			empty.setForeground(Color.GRAY);
+			empty.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+			listContainer.add(empty);
+		}
+
+		listContainer.revalidate();
+		listContainer.repaint();
+	}
+
+	private JPanel buildSourcePanel(LootRecord record)
+	{
+		String source = record.getSourceName();
+		boolean selected = plugin.isSelected(source);
+
+		JPanel wrapper = new JPanel(new BorderLayout());
+		wrapper.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createMatteBorder(0, 0, 1, 0, ColorScheme.DARKER_GRAY_COLOR),
+			BorderFactory.createEmptyBorder(4, 6, 4, 6)));
+		wrapper.setBackground(selected ? ColorScheme.DARKER_GRAY_HOVER_COLOR : ColorScheme.DARK_GRAY_COLOR);
+
+		// Header row: name + kill count, eye toggle, clear button
+		JPanel header = new JPanel(new BorderLayout());
+		header.setOpaque(false);
+
+		String kills = record.getKillCount() + (record.getKillCount() == 1 ? " kill" : " kills");
+		JLabel nameLabel = new JLabel(source + "  (" + kills + ")");
+		nameLabel.setFont(FontManager.getRunescapeSmallFont());
+		nameLabel.setForeground(selected ? Color.YELLOW : Color.WHITE);
+		header.add(nameLabel, BorderLayout.CENTER);
+
+		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+		buttons.setOpaque(false);
+
+		JButton eyeButton = new JButton();
+		eyeButton.setToolTipText(selected
+			? "Unpin: stop filtering this loot into your bank"
+			: "Pin: filter this loot into its own bank view");
+		eyeButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		BufferedImage icon = selected ? eyeOpenIcon : eyeClosedIcon;
+		if (icon != null)
+		{
+			eyeButton.setIcon(new ImageIcon(icon));
+		}
+		else
+		{
+			eyeButton.setText(selected ? "\uD83D\uDC41" : "○");
+		}
+		eyeButton.addActionListener(e ->
+		{
+			plugin.toggleSelected(source);
+			rebuild();
+		});
+		buttons.add(eyeButton);
+
+		JButton clearButton = new JButton("x");
+		clearButton.setToolTipText("Forget this loot record");
+		clearButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		clearButton.addActionListener(e -> plugin.clearRecord(source));
+		buttons.add(clearButton);
+
+		header.add(buttons, BorderLayout.EAST);
+		wrapper.add(header, BorderLayout.NORTH);
+
+		// Item grid: icon + quantity for every distinct item from this source
+		JPanel itemGrid = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
+		itemGrid.setOpaque(false);
+		for (Map.Entry<Integer, Integer> entry : record.getItems().entrySet())
+		{
+			itemGrid.add(buildItemIcon(entry.getKey(), entry.getValue()));
+		}
+		wrapper.add(itemGrid, BorderLayout.CENTER);
+
+		return wrapper;
+	}
+
+	private JLabel buildItemIcon(int itemId, int quantity)
+	{
+		JLabel label = new JLabel();
+		label.setToolTipText(itemName(itemId) + " x " + QuantityFormatter.formatNumber(quantity));
+		label.setVerticalAlignment(SwingConstants.CENTER);
+		label.setHorizontalAlignment(SwingConstants.CENTER);
+		label.setPreferredSize(new Dimension(40, 32));
+
+		AsyncBufferedImage image = itemManager.getImage(itemId, quantity, quantity > 1);
+		image.addTo(label);
+
+		return label;
+	}
+
+	private String itemName(int itemId)
+	{
+		final String[] name = new String[1];
+		try
+		{
+			clientThread.invoke(() ->
+			{
+				name[0] = plugin.getItemComposition(itemId).getName();
+				return true;
+			});
+		}
+		catch (Exception e)
+		{
+			// ignore
+		}
+		return name[0] != null ? name[0] : "Item " + itemId;
+	}
+}

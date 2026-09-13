@@ -1,6 +1,10 @@
 .gradle
 build
 .idea/
+out/
+.tmp/
+*.class
+*.iml
 .project
 .settings/
 .classpath
