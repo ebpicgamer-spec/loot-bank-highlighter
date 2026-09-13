@@ -5,6 +5,8 @@ import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.GridLayout;
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.Map;
 import javax.swing.BorderFactory;
@@ -15,6 +17,8 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.Scrollable;
+import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.game.ItemManager;
@@ -35,7 +39,7 @@ public class LootBankHighlighterPanel extends PluginPanel
 	private final LootBankHighlighterPlugin plugin;
 	private final ItemManager itemManager;
 	private final ClientThread clientThread;
-	private final JPanel listContainer = new JPanel();
+	private final JPanel listContainer = new ViewportWidthPanel();
 
 	private BufferedImage eyeOpenIcon;
 	private BufferedImage eyeClosedIcon;
@@ -88,6 +92,7 @@ public class LootBankHighlighterPanel extends PluginPanel
 
 		JScrollPane scrollPane = new JScrollPane(listContainer);
 		scrollPane.setBorder(BorderFactory.createEmptyBorder());
+		scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 		add(scrollPane, BorderLayout.CENTER);
 
@@ -192,7 +197,7 @@ public class LootBankHighlighterPanel extends PluginPanel
 		wrapper.add(header, BorderLayout.NORTH);
 
 		// Item grid: icon + quantity for every distinct item from this source
-		JPanel itemGrid = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
+		JPanel itemGrid = new JPanel(new GridLayout(0, 6, 2, 2));
 		itemGrid.setOpaque(false);
 		for (Map.Entry<Integer, Integer> entry : record.getItems().entrySet())
 		{
@@ -233,5 +238,38 @@ public class LootBankHighlighterPanel extends PluginPanel
 			// ignore
 		}
 		return name[0] != null ? name[0] : "Item " + itemId;
+	}
+
+	private static class ViewportWidthPanel extends JPanel implements Scrollable
+	{
+		@Override
+		public Dimension getPreferredScrollableViewportSize()
+		{
+			return getPreferredSize();
+		}
+
+		@Override
+		public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)
+		{
+			return 16;
+		}
+
+		@Override
+		public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)
+		{
+			return Math.max(16, visibleRect.height - 16);
+		}
+
+		@Override
+		public boolean getScrollableTracksViewportWidth()
+		{
+			return true;
+		}
+
+		@Override
+		public boolean getScrollableTracksViewportHeight()
+		{
+			return false;
+		}
 	}
 }
