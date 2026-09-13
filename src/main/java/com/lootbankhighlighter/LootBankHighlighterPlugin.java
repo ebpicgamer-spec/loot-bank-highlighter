@@ -18,6 +18,7 @@ import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.InventoryID;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.ScriptID;
 import net.runelite.api.Varbits;
@@ -27,7 +28,6 @@ import net.runelite.api.events.ScriptPostFired;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -188,7 +188,7 @@ public class LootBankHighlighterPlugin extends Plugin
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
-		if (event.getGroupId() == WidgetID.BANK_GROUP_ID && !selectedSources.isEmpty() && activeTabSource == null)
+		if (event.getGroupId() == InterfaceID.BANK && !selectedSources.isEmpty() && activeTabSource == null)
 		{
 			activateTabView(selectedSources.iterator().next());
 		}
