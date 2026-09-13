@@ -7,10 +7,12 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.Type;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
@@ -198,16 +200,9 @@ public class LootBankHighlighterPlugin extends Plugin
 			return;
 		}
 
-		// Withdrawing the last copy of an item does not always run the normal
-		// bank layout script again. Rebuild the filtered bank so stale item
-		// widgets disappear immediately.
-		clientThread.invokeLater(() ->
-		{
-			if (activeTabSource != null)
-			{
-				bankSearch.reset(true);
-			}
-		});
+		// The bank can retain the old widget after the last copy is withdrawn.
+		// Reconcile those widgets against the real bank container immediately.
+		clientThread.invokeLater(this::applyFilteredBankLayout);
 	}
 
 	/**
@@ -233,6 +228,16 @@ public class LootBankHighlighterPlugin extends Plugin
 			return;
 		}
 
+		applyFilteredBankLayout();
+	}
+
+	private void applyFilteredBankLayout()
+	{
+		if (activeTabSource == null)
+		{
+			return;
+		}
+
 		Widget itemContainer = client.getWidget(ComponentID.BANK_ITEM_CONTAINER);
 		if (itemContainer == null)
 		{
@@ -247,6 +252,13 @@ public class LootBankHighlighterPlugin extends Plugin
 
 		LootRecord record = lootRecords.get(activeTabSource);
 		Set<Integer> matchIds = record == null ? Collections.emptySet() : record.getItems().keySet();
+		net.runelite.api.ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+		Set<Integer> bankItemIds = bank == null
+			? Collections.emptySet()
+			: Arrays.stream(bank.getItems())
+				.filter(item -> item.getId() > 0 && item.getQuantity() > 0)
+				.map(net.runelite.api.Item::getId)
+				.collect(Collectors.toSet());
 
 		Widget bankTitle = client.getWidget(ComponentID.BANK_TITLE_BAR);
 		if (bankTitle != null)
@@ -269,7 +281,7 @@ public class LootBankHighlighterPlugin extends Plugin
 				continue; // leave bank furniture (tab buttons, backgrounds, etc.) alone
 			}
 
-			if (matchIds.contains(itemId))
+			if (matchIds.contains(itemId) && bankItemIds.contains(itemId))
 			{
 				int adjX = (placed % ITEMS_PER_ROW) * ITEM_HORIZONTAL_SPACING + ITEM_ROW_START;
 				int adjY = (placed / ITEMS_PER_ROW) * ITEM_VERTICAL_SPACING;
