@@ -31,6 +31,32 @@ public class LootRecord
 		killCount++;
 	}
 
+	public boolean mergeSnapshot(int importedKillCount, Map<Integer, Integer> importedItems)
+	{
+		boolean changed = false;
+		if (importedKillCount > killCount)
+		{
+			killCount = importedKillCount;
+			changed = true;
+		}
+
+		for (Map.Entry<Integer, Integer> entry : importedItems.entrySet())
+		{
+			Integer current = items.get(entry.getKey());
+			if (current == null || entry.getValue() > current)
+			{
+				items.put(entry.getKey(), entry.getValue());
+				changed = true;
+			}
+		}
+
+		if (changed)
+		{
+			lastUpdatedMillis = System.currentTimeMillis();
+		}
+		return changed;
+	}
+
 	public String getSourceName()
 	{
 		return sourceName;

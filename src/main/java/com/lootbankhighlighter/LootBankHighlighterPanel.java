@@ -12,6 +12,7 @@ import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
@@ -75,6 +76,11 @@ public class LootBankHighlighterPanel extends PluginPanel
 		title.setForeground(Color.WHITE);
 		titlePanel.add(title, BorderLayout.CENTER);
 
+		JButton importButton = new JButton("Import Loot Tracker History");
+		importButton.setToolTipText("Import remembered loot from RuneLite's active character profile");
+		importButton.addActionListener(e -> importLootTrackerHistory());
+		titlePanel.add(importButton, BorderLayout.SOUTH);
+
 		add(titlePanel, BorderLayout.NORTH);
 
 		listContainer.setLayout(new BoxLayout(listContainer, BoxLayout.Y_AXIS));
@@ -86,6 +92,28 @@ public class LootBankHighlighterPanel extends PluginPanel
 		add(scrollPane, BorderLayout.CENTER);
 
 		rebuild();
+	}
+
+	private void importLootTrackerHistory()
+	{
+		int choice = JOptionPane.showConfirmDialog(
+			this,
+			"<html>Import RuneLite's remembered Loot Tracker history for the active character?<br>"
+				+ "Existing records will be kept, and repeated imports will not double their totals.</html>",
+			"Import Loot Tracker History",
+			JOptionPane.OK_CANCEL_OPTION,
+			JOptionPane.QUESTION_MESSAGE);
+		if (choice != JOptionPane.OK_OPTION)
+		{
+			return;
+		}
+
+		LootBankHighlighterPlugin.ImportResult result = plugin.importLootTrackerHistory();
+		JOptionPane.showMessageDialog(
+			this,
+			result.getMessage(),
+			"Loot Tracker Import",
+			result.isSuccess() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
 	}
 
 	public void rebuild()

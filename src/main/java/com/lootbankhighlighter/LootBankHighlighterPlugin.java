@@ -51,6 +51,8 @@ import net.runelite.client.util.ImageUtil;
 public class LootBankHighlighterPlugin extends Plugin
 {
 	private static final String CONFIG_KEY_RECORDS = "lootRecordsJson";
+	private static final String LOOT_TRACKER_CONFIG_GROUP = "loottracker";
+	private static final String LOOT_TRACKER_DROP_PREFIX = "drops_";
 
 	// Mirrors the real bank's own item grid layout so repositioned items line up correctly.
 	private static final int ITEMS_PER_ROW = 8;
@@ -411,6 +413,129 @@ public class LootBankHighlighterPlugin extends Plugin
 	public ItemComposition getItemComposition(int itemId)
 	{
 		return itemManager.getItemComposition(itemId);
+	}
+
+	public ImportResult importLootTrackerHistory()
+	{
+		String profileKey = configManager.getRSProfileKey();
+		if (profileKey == null || profileKey.isEmpty())
+		{
+			return new ImportResult(false, "Log into a character before importing Loot Tracker history.");
+		}
+
+		Map<String, ImportedLoot> bySource = new LinkedHashMap<>();
+		int readableRecords = 0;
+		for (String key : configManager.getRSProfileConfigurationKeys(
+			LOOT_TRACKER_CONFIG_GROUP, profileKey, LOOT_TRACKER_DROP_PREFIX))
+		{
+			String json = configManager.getConfiguration(LOOT_TRACKER_CONFIG_GROUP, profileKey, key);
+			if (json == null || json.isEmpty())
+			{
+				continue;
+			}
+
+			try
+			{
+				ImportedLoot imported = gson.fromJson(json, ImportedLoot.class);
+				if (imported == null || imported.name == null || imported.name.isEmpty()
+					|| imported.drops == null || imported.drops.length < 2)
+				{
+					continue;
+				}
+
+				readableRecords++;
+				ImportedLoot combined = bySource.computeIfAbsent(imported.name, ImportedLoot::new);
+				combined.kills = saturatedAdd(combined.kills, Math.max(0, imported.kills));
+				for (int i = 0; i + 1 < imported.drops.length; i += 2)
+				{
+					int itemId = imported.drops[i];
+					int quantity = imported.drops[i + 1];
+					if (itemId > 0 && quantity > 0)
+					{
+						combined.items.merge(itemId, quantity, LootBankHighlighterPlugin::saturatedAdd);
+					}
+				}
+			}
+			catch (RuntimeException ex)
+			{
+				log.debug("Skipping unreadable Loot Tracker record {}", key, ex);
+			}
+		}
+
+		if (readableRecords == 0)
+		{
+			return new ImportResult(false,
+				"No remembered Loot Tracker history was found for the active character. "
+					+ "Make sure Loot Tracker's Remember loot setting is enabled.");
+		}
+
+		int changedSources = 0;
+		for (ImportedLoot imported : bySource.values())
+		{
+			if (imported.items.isEmpty())
+			{
+				continue;
+			}
+			LootRecord destination = lootRecords.computeIfAbsent(imported.name, LootRecord::new);
+			if (destination.mergeSnapshot(imported.kills, imported.items))
+			{
+				changedSources++;
+			}
+		}
+
+		saveRecords();
+		refreshPanel();
+		if (changedSources == 0)
+		{
+			return new ImportResult(true, "Everything in Loot Tracker was already imported.");
+		}
+		return new ImportResult(true,
+			"Imported or updated " + changedSources + (changedSources == 1 ? " loot source." : " loot sources."));
+	}
+
+	private static int saturatedAdd(int first, int second)
+	{
+		long result = (long) first + second;
+		return result > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) result;
+	}
+
+	private static class ImportedLoot
+	{
+		private String name;
+		private int kills;
+		private int[] drops;
+		private final Map<Integer, Integer> items = new LinkedHashMap<>();
+
+		private ImportedLoot()
+		{
+		}
+
+		private ImportedLoot(String name)
+		{
+			this.name = name;
+		}
+	}
+
+	public static class ImportResult
+	{
+		private final boolean success;
+		private final String message;
+
+		private ImportResult(boolean success, String message)
+		{
+			this.success = success;
+			this.message = message;
+		}
+
+		public boolean isSuccess()
+		{
+			return success;
+		}
+
+		public String getMessage()
+		{
+			return message;
+		}
 	}
 
 	// ---- persistence ----
