@@ -15,10 +15,12 @@ import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.InventoryID;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.ScriptID;
 import net.runelite.api.Varbits;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.ScriptPostFired;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.widgets.ComponentID;
@@ -186,6 +188,26 @@ public class LootBankHighlighterPlugin extends Plugin
 		{
 			activateTabView(selectedSources.iterator().next());
 		}
+	}
+
+	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged event)
+	{
+		if (event.getContainerId() != InventoryID.BANK.getId() || activeTabSource == null)
+		{
+			return;
+		}
+
+		// Withdrawing the last copy of an item does not always run the normal
+		// bank layout script again. Rebuild the filtered bank so stale item
+		// widgets disappear immediately.
+		clientThread.invokeLater(() ->
+		{
+			if (activeTabSource != null)
+			{
+				bankSearch.reset(true);
+			}
+		});
 	}
 
 	/**
