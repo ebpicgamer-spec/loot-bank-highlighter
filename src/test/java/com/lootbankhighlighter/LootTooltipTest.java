@@ -1,5 +1,6 @@
 package com.lootbankhighlighter;
 
+import java.util.Map;
 import net.runelite.api.gameval.ItemID;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
@@ -8,6 +9,20 @@ import static org.junit.Assert.assertTrue;
 
 public class LootTooltipTest
 {
+	@Test
+	public void sourceTotalSumsStacksWithoutIntegerOverflow()
+	{
+		assertEquals(6_000_000_020L, LootBankHighlighterPanel.totalGeValue(
+			Map.of(1, 2_000_000_000, 2, 10), id -> id == 1 ? 3 : 2));
+	}
+
+	@Test
+	public void emptyAndUnpricedSourcesHaveZeroValue()
+	{
+		assertEquals(0L, LootBankHighlighterPanel.totalGeValue(Map.of(), id -> 100));
+		assertEquals(0L, LootBankHighlighterPanel.totalGeValue(Map.of(1, 10), id -> 0));
+	}
+
 	@Test
 	public void stackShowsTotalsAndUnitPrices()
 	{
