@@ -7,7 +7,6 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.Type;
-import java.util.Arrays;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Objects;
@@ -20,6 +19,7 @@ import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.Item;
 import net.runelite.api.InventoryID;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.ItemComposition;
@@ -208,9 +208,15 @@ public class LootBankHighlighterPlugin extends Plugin
 			return;
 		}
 
-		// The bank can retain the old widget after the last copy is withdrawn.
-		// Reconcile those widgets against the real bank container immediately.
-		clientThread.invokeLater(this::applyFilteredBankLayout);
+		// Rebuild native widgets first: deposits can move stacks to different slots.
+		// BANKMAIN_FINISHBUILDING then applies our filter to the rebuilt widgets.
+		clientThread.invokeLater(() ->
+		{
+			if (activeTabSource != null)
+			{
+				bankSearch.layoutBank();
+			}
+		});
 	}
 
 	/**
@@ -261,12 +267,7 @@ public class LootBankHighlighterPlugin extends Plugin
 		LootRecord record = lootRecords.get(activeTabSource);
 		Set<Integer> matchIds = record == null ? Collections.emptySet() : record.getItems().keySet();
 		net.runelite.api.ItemContainer bank = client.getItemContainer(InventoryID.BANK);
-		Set<Integer> bankItemIds = bank == null
-			? Collections.emptySet()
-			: Arrays.stream(bank.getItems())
-				.filter(item -> item.getId() > 0 && item.getQuantity() > 0)
-				.map(net.runelite.api.Item::getId)
-				.collect(Collectors.toSet());
+		Item[] bankItems = bank == null ? new Item[0] : bank.getItems();
 
 		Widget bankTitle = client.getWidget(ComponentID.BANK_TITLE_BAR);
 		if (bankTitle != null)
@@ -289,7 +290,9 @@ public class LootBankHighlighterPlugin extends Plugin
 				continue; // leave bank furniture (tab buttons, backgrounds, etc.) alone
 			}
 
-			if (matchIds.contains(itemId) && bankItemIds.contains(itemId))
+			// A stale widget may still have this item ID even though its slot is empty.
+			// Validate the exact slot so redepositing the item cannot revive that widget.
+			if (matchIds.contains(itemId) && isCurrentBankSlot(bankItems, widget.getIndex(), itemId))
 			{
 				int adjX = (placed % ITEMS_PER_ROW) * ITEM_HORIZONTAL_SPACING + ITEM_ROW_START;
 				int adjY = (placed / ITEMS_PER_ROW) * ITEM_VERTICAL_SPACING;
@@ -305,6 +308,16 @@ public class LootBankHighlighterPlugin extends Plugin
 				widget.setHidden(true);
 			}
 		}
+	}
+
+	static boolean isCurrentBankSlot(Item[] bankItems, int slot, int itemId)
+	{
+		if (slot < 0 || slot >= bankItems.length)
+		{
+			return false;
+		}
+		Item item = bankItems[slot];
+		return item != null && item.getId() == itemId && item.getQuantity() > 0;
 	}
 
 	// ---- activation, driven by the panel's eye-icon buttons ----
