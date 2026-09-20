@@ -8,6 +8,9 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.Type;
 import java.util.Arrays;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.Objects;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -87,6 +90,7 @@ public class LootBankHighlighterPlugin extends Plugin
 
 	private LootBankHighlighterPanel panel;
 	private NavigationButton navButton;
+	private final Deque<DeletedRecord> deletedRecords = new ArrayDeque<>();
 
 	/** sourceName -> aggregated loot */
 	private final Map<String, LootRecord> lootRecords = new LinkedHashMap<>();
@@ -106,6 +110,7 @@ public class LootBankHighlighterPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		deletedRecords.clear();
 		loadRecords();
 
 		panel = new LootBankHighlighterPanel(this, itemManager, clientThread);
@@ -142,6 +147,7 @@ public class LootBankHighlighterPlugin extends Plugin
 		{
 			deactivateTabView();
 		}
+		deletedRecords.clear();
 		clientToolbar.removeNavigation(navButton);
 		saveRecords();
 	}
@@ -310,6 +316,11 @@ public class LootBankHighlighterPlugin extends Plugin
 
 	public void toggleSelected(String sourceName)
 	{
+		clientThread.invoke(() -> toggleSelectedOnClient(sourceName));
+	}
+
+	private void toggleSelectedOnClient(String sourceName)
+	{
 		if (selectedSources.contains(sourceName))
 		{
 			selectedSources.remove(sourceName);
@@ -392,14 +403,77 @@ public class LootBankHighlighterPlugin extends Plugin
 
 	public void clearRecord(String sourceName)
 	{
-		lootRecords.remove(sourceName);
-		selectedSources.remove(sourceName);
-		if (sourceName.equals(activeTabSource))
+		clientThread.invoke(() ->
 		{
-			deactivateTabView();
+			LootRecord removed = lootRecords.remove(sourceName);
+			if (removed == null)
+			{
+				return;
+			}
+			deletedRecords.push(new DeletedRecord(removed, selectedSources.remove(sourceName),
+				configManager.getRSProfileKey()));
+			if (sourceName.equals(activeTabSource))
+			{
+				deactivateTabView();
+			}
+			saveRecords();
+			refreshPanel();
+		});
+	}
+
+	public String getUndoSource()
+	{
+		// Never restore a deletion into a different character's session.
+		if (!deletedRecords.isEmpty()
+			&& !Objects.equals(deletedRecords.peek().profile, configManager.getRSProfileKey()))
+		{
+			deletedRecords.clear();
 		}
-		saveRecords();
-		refreshPanel();
+		return deletedRecords.isEmpty() ? null : deletedRecords.peek().record.getSourceName();
+	}
+
+	public void undoDelete()
+	{
+		clientThread.invoke(() ->
+		{
+			if (getUndoSource() == null)
+			{
+				refreshPanel();
+				return;
+			}
+			DeletedRecord deleted = deletedRecords.pop();
+			String source = deleted.record.getSourceName();
+			LootRecord current = lootRecords.get(source);
+			if (current == null)
+			{
+				lootRecords.put(source, deleted.record);
+			}
+			else
+			{
+				current.restoreDeleted(deleted.record);
+			}
+			if (deleted.pinned && (!config.onlyOneSourceAtATime() || selectedSources.isEmpty())
+				&& !selectedSources.contains(source))
+			{
+				toggleSelected(source);
+			}
+			saveRecords();
+			refreshPanel();
+		});
+	}
+
+	private static class DeletedRecord
+	{
+		private final LootRecord record;
+		private final boolean pinned;
+		private final String profile;
+
+		private DeletedRecord(LootRecord record, boolean pinned, String profile)
+		{
+			this.record = record;
+			this.pinned = pinned;
+			this.profile = profile;
+		}
 	}
 
 	public void refreshPanel()
@@ -469,6 +543,8 @@ public class LootBankHighlighterPlugin extends Plugin
 					+ "Make sure Loot Tracker's Remember loot setting is enabled.");
 		}
 
+		// Imported snapshots overlap deleted history; invalidate undo to avoid counting it twice.
+		deletedRecords.clear();
 		int changedSources = 0;
 		for (ImportedLoot imported : bySource.values())
 		{

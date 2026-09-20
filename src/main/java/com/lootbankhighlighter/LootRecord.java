@@ -78,6 +78,28 @@ public class LootRecord
 		lastUpdatedMillis = System.currentTimeMillis();
 	}
 
+	public LootRecord copy()
+	{
+		LootRecord copy = new LootRecord(sourceName);
+		copy.items.putAll(items);
+		copy.killCount = killCount;
+		copy.lastUpdatedMillis = lastUpdatedMillis;
+		return copy;
+	}
+
+	/** Restore deleted history without losing drops received after deletion. */
+	public void restoreDeleted(LootRecord deleted)
+	{
+		killCount = saturatedAdd(killCount, deleted.killCount);
+		deleted.items.forEach((id, quantity) -> items.merge(id, quantity, LootRecord::saturatedAdd));
+		lastUpdatedMillis = Math.max(lastUpdatedMillis, deleted.lastUpdatedMillis);
+	}
+
+	private static int saturatedAdd(int a, int b)
+	{
+		return (int) Math.min(Integer.MAX_VALUE, (long) a + b);
+	}
+
 	public boolean isEmpty()
 	{
 		return items.isEmpty();

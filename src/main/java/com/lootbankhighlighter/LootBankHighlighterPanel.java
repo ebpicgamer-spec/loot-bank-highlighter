@@ -9,13 +9,24 @@ import java.awt.GridLayout;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.Map;
-import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.Locale;
+import java.util.Comparator;
 import java.util.function.IntUnaryOperator;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JLabel;
+import javax.swing.JTextField;
+import javax.swing.JComboBox;
+import javax.swing.JCheckBox;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -45,6 +56,13 @@ public class LootBankHighlighterPanel extends PluginPanel
 	private final ItemManager itemManager;
 	private final ClientThread clientThread;
 	private final JPanel listContainer = new ViewportWidthPanel();
+
+	private final JTextField searchField = new JTextField();
+	private final JComboBox<String> sortBox = new JComboBox<>(new String[]{"Most recent", "Highest value", "Name"});
+	private final JCheckBox pinnedFirst = new JCheckBox("Pinned first", true);
+	private final Set<String> collapsedSources = new HashSet<>();
+	private final JButton undoButton = new JButton("Undo delete");
+	private volatile int rebuildGeneration;
 
 	private BufferedImage eyeOpenIcon;
 	private BufferedImage eyeClosedIcon;
@@ -90,7 +108,30 @@ public class LootBankHighlighterPanel extends PluginPanel
 		importButton.addActionListener(e -> importLootTrackerHistory());
 		titlePanel.add(importButton, BorderLayout.SOUTH);
 
-		add(titlePanel, BorderLayout.NORTH);
+		JPanel controls = new JPanel(new GridLayout(0, 1, 0, 4));
+		controls.setOpaque(false);
+		searchField.setToolTipText("Search source or item name");
+		controls.add(new JLabel("Search source or item:"));
+		controls.add(searchField);
+		controls.add(sortBox);
+		pinnedFirst.setOpaque(false);
+		controls.add(pinnedFirst);
+		undoButton.setVisible(false);
+		undoButton.addActionListener(e -> plugin.undoDelete());
+		controls.add(undoButton);
+		JPanel top = new JPanel(new BorderLayout(0, 4));
+		top.setOpaque(false);
+		top.add(titlePanel, BorderLayout.NORTH);
+		top.add(controls, BorderLayout.CENTER);
+		add(top, BorderLayout.NORTH);
+		searchField.getDocument().addDocumentListener(new DocumentListener()
+		{
+			public void insertUpdate(DocumentEvent e) { rebuild(); }
+			public void removeUpdate(DocumentEvent e) { rebuild(); }
+			public void changedUpdate(DocumentEvent e) { rebuild(); }
+		});
+		sortBox.addActionListener(e -> rebuild());
+		pinnedFirst.addActionListener(e -> rebuild());
 
 		listContainer.setLayout(new BoxLayout(listContainer, BoxLayout.Y_AXIS));
 		listContainer.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -118,39 +159,97 @@ public class LootBankHighlighterPanel extends PluginPanel
 			return;
 		}
 
-		LootBankHighlighterPlugin.ImportResult result = plugin.importLootTrackerHistory();
-		JOptionPane.showMessageDialog(
-			this,
-			result.getMessage(),
-			"Loot Tracker Import",
-			result.isSuccess() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
+		clientThread.invoke(() ->
+		{
+			LootBankHighlighterPlugin.ImportResult result = plugin.importLootTrackerHistory();
+			SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+				this, result.getMessage(), "Loot Tracker Import",
+				result.isSuccess() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE));
+		});
 	}
 
 	public void rebuild()
 	{
-		listContainer.removeAll();
-
-		plugin.getLootRecords().values().stream()
-			.filter(r -> !r.isEmpty())
-			.sorted((a, b) -> Long.compare(b.getLastUpdatedMillis(), a.getLastUpdatedMillis()))
-			.forEach(record -> listContainer.add(buildSourcePanel(record)));
-
-		if (plugin.getLootRecords().isEmpty())
+		if (!SwingUtilities.isEventDispatchThread())
 		{
-			JLabel empty = new JLabel("<html>No loot tracked yet.<br>Kill something and it'll show up here.</html>");
-			empty.setForeground(Color.GRAY);
-			empty.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-			listContainer.add(empty);
+			SwingUtilities.invokeLater(this::rebuild);
+			return;
 		}
-
-		listContainer.revalidate();
-		listContainer.repaint();
+		final int generation = ++rebuildGeneration;
+		String query = searchField.getText().trim().toLowerCase(Locale.ROOT);
+		int sort = sortBox.getSelectedIndex();
+		boolean pinsFirst = pinnedFirst.isSelected();
+		clientThread.invoke(() ->
+		{
+			if (generation != rebuildGeneration) { return; }
+			List<LootRecord> records = new ArrayList<>();
+			Map<String, Long> totals = new HashMap<>();
+			Set<String> pins = new HashSet<>(plugin.getSelectedSources());
+			Map<Integer, String> names = new HashMap<>();
+			Map<Integer, Integer> prices = new HashMap<>();
+			boolean hasRecords = !plugin.getLootRecords().isEmpty();
+			for (LootRecord live : plugin.getLootRecords().values())
+			{
+				LootRecord record = live.copy();
+				if (record.isEmpty()) { continue; }
+				boolean matches = record.getSourceName().toLowerCase(Locale.ROOT).contains(query);
+				for (int id : record.getItems().keySet())
+				{
+					int canonical = itemManager.canonicalize(id);
+					if (!matches)
+					{
+						String name = names.computeIfAbsent(canonical,
+							key -> itemManager.getItemComposition(key).getMembersName().toLowerCase(Locale.ROOT));
+						matches = name.contains(query);
+					}
+					prices.computeIfAbsent(id, key -> itemManager.getItemPrice(canonical));
+				}
+				if (matches)
+				{
+					records.add(record);
+					totals.put(record.getSourceName(), totalGeValue(record.getItems(), prices::get));
+				}
+			}
+			Comparator<LootRecord> order = sort == 1
+				? Comparator.comparingLong((LootRecord r) -> totals.get(r.getSourceName())).reversed()
+				: sort == 2 ? Comparator.comparing(LootRecord::getSourceName, String.CASE_INSENSITIVE_ORDER)
+				: Comparator.comparingLong(LootRecord::getLastUpdatedMillis).reversed();
+			order = order.thenComparing(LootRecord::getSourceName);
+			if (pinsFirst)
+			{
+				order = Comparator.comparing((LootRecord r) -> !pins.contains(r.getSourceName())).thenComparing(order);
+			}
+			records.sort(order);
+			String undoSource = plugin.getUndoSource();
+			SwingUtilities.invokeLater(() ->
+			{
+				if (generation != rebuildGeneration) { return; }
+				listContainer.removeAll();
+				for (LootRecord record : records)
+				{
+					listContainer.add(buildSourcePanel(record, totals.get(record.getSourceName()),
+						pins.contains(record.getSourceName())));
+				}
+				if (records.isEmpty())
+				{
+					JLabel empty = new JLabel(hasRecords ? "No matching loot sources."
+						: "<html>No loot tracked yet.<br>Kill something or import history.</html>");
+					empty.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+					listContainer.add(empty);
+				}
+				undoButton.setVisible(undoSource != null);
+				undoButton.setToolTipText(undoSource == null ? null : "Restore " + undoSource
+					+ " (available until restart or history import)");
+				listContainer.revalidate();
+				listContainer.repaint();
+				revalidate();
+			});
+		});
 	}
 
-	private JPanel buildSourcePanel(LootRecord record)
+	private JPanel buildSourcePanel(LootRecord record, long total, boolean selected)
 	{
 		String source = record.getSourceName();
-		boolean selected = plugin.isSelected(source);
 
 		JPanel wrapper = new JPanel(new BorderLayout());
 		wrapper.setBorder(BorderFactory.createCompoundBorder(
@@ -183,24 +282,22 @@ public class LootBankHighlighterPanel extends PluginPanel
 		killsLabel.setForeground(Color.LIGHT_GRAY);
 		header.add(killsLabel, BorderLayout.CENTER);
 
-		// Snapshot quantities before scheduling the price lookup on the client thread.
-		Map<Integer, Integer> items = new LinkedHashMap<>(record.getItems());
-		clientThread.invoke(() ->
-		{
-			long total = totalGeValue(items,
-				id -> itemManager.getItemPrice(itemManager.canonicalize(id)));
-			String value = QuantityFormatter.quantityToStackSize(total) + " gp";
-			String tooltip = "Estimated GE value of tracked loot: "
-				+ QuantityFormatter.formatNumber(total) + " gp";
-			SwingUtilities.invokeLater(() ->
-			{
-				valueLabel.setText(value);
-				valueLabel.setToolTipText(tooltip);
-			});
-		});
+		Map<Integer, Integer> items = record.getItems();
+		valueLabel.setText(QuantityFormatter.quantityToStackSize(total) + " gp");
+		valueLabel.setToolTipText("Estimated GE value of tracked loot: "
+			+ QuantityFormatter.formatNumber(total) + " gp");
 
 		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
 		buttons.setOpaque(false);
+
+		JButton collapseButton = new JButton(collapsedSources.contains(source) ? "+" : "-");
+		collapseButton.setToolTipText(collapsedSources.contains(source) ? "Expand loot" : "Collapse loot");
+		collapseButton.addActionListener(e ->
+		{
+			if (!collapsedSources.remove(source)) { collapsedSources.add(source); }
+			rebuild();
+		});
+		buttons.add(collapseButton);
 
 		JButton eyeButton = new JButton();
 		eyeButton.setToolTipText(selected
@@ -229,8 +326,17 @@ public class LootBankHighlighterPanel extends PluginPanel
 		clearButton.addActionListener(e -> plugin.clearRecord(source));
 		buttons.add(clearButton);
 
-		header.add(buttons, BorderLayout.EAST);
+		JPanel details = new JPanel(new BorderLayout());
+		details.setOpaque(false);
+		details.add(killsLabel, BorderLayout.CENTER);
+		details.add(buttons, BorderLayout.EAST);
+		header.add(details, BorderLayout.CENTER);
 		wrapper.add(header, BorderLayout.NORTH);
+
+		if (collapsedSources.contains(source))
+		{
+			return wrapper;
+		}
 
 		// Item grid: icon + quantity for every distinct item from this source
 		JPanel itemGrid = new JPanel(new GridLayout(0, 6, 2, 2));
