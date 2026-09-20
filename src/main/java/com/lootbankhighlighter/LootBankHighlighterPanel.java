@@ -20,6 +20,9 @@ import javax.swing.JScrollPane;
 import javax.swing.Scrollable;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+import net.runelite.api.ItemComposition;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.util.AsyncBufferedImage;
@@ -211,7 +214,16 @@ public class LootBankHighlighterPanel extends PluginPanel
 	private JLabel buildItemIcon(int itemId, int quantity)
 	{
 		JLabel label = new JLabel();
-		label.setToolTipText(itemName(itemId) + " x " + QuantityFormatter.formatNumber(quantity));
+		label.setToolTipText("Loading item details...");
+		clientThread.invoke(() ->
+		{
+			// Item definitions must be read on the client thread; Swing updates belong on the EDT.
+			int canonicalId = itemManager.canonicalize(itemId);
+			ItemComposition item = itemManager.getItemComposition(canonicalId);
+			String tooltip = buildToolTip(canonicalId, item.getMembersName(), quantity,
+				itemManager.getItemPrice(canonicalId), item.getHaPrice());
+			SwingUtilities.invokeLater(() -> label.setToolTipText(tooltip));
+		});
 		label.setVerticalAlignment(SwingConstants.CENTER);
 		label.setHorizontalAlignment(SwingConstants.CENTER);
 		label.setPreferredSize(new Dimension(40, 32));
@@ -222,22 +234,30 @@ public class LootBankHighlighterPanel extends PluginPanel
 		return label;
 	}
 
-	private String itemName(int itemId)
+	static String buildToolTip(int itemId, String name, int quantity, int gePrice, int haPrice)
 	{
-		final String[] name = new String[1];
-		try
+		String escapedName = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+		StringBuilder tooltip = new StringBuilder("<html>");
+		tooltip.append(escapedName).append(" x ").append(QuantityFormatter.formatNumber(quantity));
+		if (itemId != ItemID.COINS)
 		{
-			clientThread.invoke(() ->
+			appendPrice(tooltip, "GE", quantity, gePrice);
+			if (itemId != ItemID.PLATINUM)
 			{
-				name[0] = plugin.getItemComposition(itemId).getName();
-				return true;
-			});
+				appendPrice(tooltip, "HA", quantity, haPrice);
+			}
 		}
-		catch (Exception e)
+		return tooltip.append("</html>").toString();
+	}
+
+	private static void appendPrice(StringBuilder tooltip, String type, int quantity, int unitPrice)
+	{
+		tooltip.append("<br>").append(type).append(": ")
+			.append(QuantityFormatter.quantityToStackSize((long) unitPrice * quantity));
+		if (quantity > 1)
 		{
-			// ignore
+			tooltip.append(" (").append(QuantityFormatter.quantityToStackSize(unitPrice)).append(" ea)");
 		}
-		return name[0] != null ? name[0] : "Item " + itemId;
 	}
 
 	private static class ViewportWidthPanel extends JPanel implements Scrollable
