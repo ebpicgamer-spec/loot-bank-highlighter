@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.Locale;
 import java.util.Comparator;
 import java.util.function.IntUnaryOperator;
 import javax.swing.BorderFactory;
@@ -22,11 +21,8 @@ import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JLabel;
-import javax.swing.JTextField;
 import javax.swing.JComboBox;
 import javax.swing.JCheckBox;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -57,7 +53,6 @@ public class LootBankHighlighterPanel extends PluginPanel
 	private final ClientThread clientThread;
 	private final JPanel listContainer = new ViewportWidthPanel();
 
-	private final JTextField searchField = new JTextField();
 	private final JComboBox<String> sortBox = new JComboBox<>(new String[]{"Most recent", "Highest value", "Name"});
 	private final JCheckBox pinnedFirst = new JCheckBox("Pinned first", true);
 	private final Set<String> collapsedSources = new HashSet<>();
@@ -110,9 +105,6 @@ public class LootBankHighlighterPanel extends PluginPanel
 
 		JPanel controls = new JPanel(new GridLayout(0, 1, 0, 4));
 		controls.setOpaque(false);
-		searchField.setToolTipText("Search source or item name");
-		controls.add(new JLabel("Search source or item:"));
-		controls.add(searchField);
 		controls.add(sortBox);
 		pinnedFirst.setOpaque(false);
 		controls.add(pinnedFirst);
@@ -124,12 +116,6 @@ public class LootBankHighlighterPanel extends PluginPanel
 		top.add(titlePanel, BorderLayout.NORTH);
 		top.add(controls, BorderLayout.CENTER);
 		add(top, BorderLayout.NORTH);
-		searchField.getDocument().addDocumentListener(new DocumentListener()
-		{
-			public void insertUpdate(DocumentEvent e) { rebuild(); }
-			public void removeUpdate(DocumentEvent e) { rebuild(); }
-			public void changedUpdate(DocumentEvent e) { rebuild(); }
-		});
 		sortBox.addActionListener(e -> rebuild());
 		pinnedFirst.addActionListener(e -> rebuild());
 
@@ -176,7 +162,6 @@ public class LootBankHighlighterPanel extends PluginPanel
 			return;
 		}
 		final int generation = ++rebuildGeneration;
-		String query = searchField.getText().trim().toLowerCase(Locale.ROOT);
 		int sort = sortBox.getSelectedIndex();
 		boolean pinsFirst = pinnedFirst.isSelected();
 		clientThread.invoke(() ->
@@ -185,30 +170,18 @@ public class LootBankHighlighterPanel extends PluginPanel
 			List<LootRecord> records = new ArrayList<>();
 			Map<String, Long> totals = new HashMap<>();
 			Set<String> pins = new HashSet<>(plugin.getSelectedSources());
-			Map<Integer, String> names = new HashMap<>();
 			Map<Integer, Integer> prices = new HashMap<>();
-			boolean hasRecords = !plugin.getLootRecords().isEmpty();
 			for (LootRecord live : plugin.getLootRecords().values())
 			{
 				LootRecord record = live.copy();
 				if (record.isEmpty()) { continue; }
-				boolean matches = record.getSourceName().toLowerCase(Locale.ROOT).contains(query);
 				for (int id : record.getItems().keySet())
 				{
 					int canonical = itemManager.canonicalize(id);
-					if (!matches)
-					{
-						String name = names.computeIfAbsent(canonical,
-							key -> itemManager.getItemComposition(key).getMembersName().toLowerCase(Locale.ROOT));
-						matches = name.contains(query);
-					}
 					prices.computeIfAbsent(id, key -> itemManager.getItemPrice(canonical));
 				}
-				if (matches)
-				{
-					records.add(record);
-					totals.put(record.getSourceName(), totalGeValue(record.getItems(), prices::get));
-				}
+				records.add(record);
+				totals.put(record.getSourceName(), totalGeValue(record.getItems(), prices::get));
 			}
 			Comparator<LootRecord> order = sort == 1
 				? Comparator.comparingLong((LootRecord r) -> totals.get(r.getSourceName())).reversed()
@@ -232,8 +205,7 @@ public class LootBankHighlighterPanel extends PluginPanel
 				}
 				if (records.isEmpty())
 				{
-					JLabel empty = new JLabel(hasRecords ? "No matching loot sources."
-						: "<html>No loot tracked yet.<br>Kill something or import history.</html>");
+					JLabel empty = new JLabel("<html>No loot tracked yet.<br>Kill something or import history.</html>");
 					empty.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 					listContainer.add(empty);
 				}
