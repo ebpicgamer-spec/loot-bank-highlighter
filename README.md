@@ -45,6 +45,28 @@ The import reads remembered Loot Tracker data from the active RuneLite character
 
 The filtered results are real bank items—not decorative copies—so normal bank interactions still work.
 
+## Screenshots
+
+### 1. Open your bank and the plugin panel
+
+View your bank alongside your tracked Alchemical Hydra loot.
+
+![Normal bank](Loot%20Bank%20Highlighter%201.png)
+
+### 2. Pin a loot source
+
+Click the eye button beside Alchemical Hydra to filter your bank to matching items.
+
+![Hydra loot filter enabled](Loot%20Bank%20Highlighter%202.png)
+
+### 3. Withdraw your loot
+
+Withdraw items normally, including as notes. The filtered bank updates as items are removed.
+
+![Withdrawing loot as notes](Loot%20Bank%20Highlighter%203.png)
+
+Click the eye button again to restore the normal bank view.
+
 ## Configuration
 
 - **Single source selection** controls whether only one source can be pinned at a time.
