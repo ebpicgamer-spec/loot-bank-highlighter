@@ -9,6 +9,8 @@ import java.awt.GridLayout;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.function.IntUnaryOperator;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
@@ -156,15 +158,46 @@ public class LootBankHighlighterPanel extends PluginPanel
 			BorderFactory.createEmptyBorder(4, 6, 4, 6)));
 		wrapper.setBackground(selected ? ColorScheme.DARKER_GRAY_HOVER_COLOR : ColorScheme.DARK_GRAY_COLOR);
 
-		// Header row: name + kill count, eye toggle, clear button
+		// Keep the value on the first row and controls on a separate row to avoid clipping.
 		JPanel header = new JPanel(new BorderLayout());
 		header.setOpaque(false);
 
 		String kills = record.getKillCount() + (record.getKillCount() == 1 ? " kill" : " kills");
-		JLabel nameLabel = new JLabel(source + "  (" + kills + ")");
+		JLabel nameLabel = new JLabel(source);
+		nameLabel.setToolTipText(source);
 		nameLabel.setFont(FontManager.getRunescapeSmallFont());
 		nameLabel.setForeground(selected ? Color.YELLOW : Color.WHITE);
-		header.add(nameLabel, BorderLayout.CENTER);
+		JPanel heading = new JPanel(new BorderLayout(6, 0));
+		heading.setOpaque(false);
+		heading.add(nameLabel, BorderLayout.CENTER);
+
+		JLabel valueLabel = new JLabel("...", SwingConstants.RIGHT);
+		valueLabel.setFont(FontManager.getRunescapeSmallFont());
+		valueLabel.setForeground(Color.LIGHT_GRAY);
+		valueLabel.setToolTipText("Loading estimated GE value...");
+		heading.add(valueLabel, BorderLayout.EAST);
+		header.add(heading, BorderLayout.NORTH);
+
+		JLabel killsLabel = new JLabel(kills);
+		killsLabel.setFont(FontManager.getRunescapeSmallFont());
+		killsLabel.setForeground(Color.LIGHT_GRAY);
+		header.add(killsLabel, BorderLayout.CENTER);
+
+		// Snapshot quantities before scheduling the price lookup on the client thread.
+		Map<Integer, Integer> items = new LinkedHashMap<>(record.getItems());
+		clientThread.invoke(() ->
+		{
+			long total = totalGeValue(items,
+				id -> itemManager.getItemPrice(itemManager.canonicalize(id)));
+			String value = QuantityFormatter.quantityToStackSize(total) + " gp";
+			String tooltip = "Estimated GE value of tracked loot: "
+				+ QuantityFormatter.formatNumber(total) + " gp";
+			SwingUtilities.invokeLater(() ->
+			{
+				valueLabel.setText(value);
+				valueLabel.setToolTipText(tooltip);
+			});
+		});
 
 		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
 		buttons.setOpaque(false);
@@ -202,13 +235,23 @@ public class LootBankHighlighterPanel extends PluginPanel
 		// Item grid: icon + quantity for every distinct item from this source
 		JPanel itemGrid = new JPanel(new GridLayout(0, 6, 2, 2));
 		itemGrid.setOpaque(false);
-		for (Map.Entry<Integer, Integer> entry : record.getItems().entrySet())
+		for (Map.Entry<Integer, Integer> entry : items.entrySet())
 		{
 			itemGrid.add(buildItemIcon(entry.getKey(), entry.getValue()));
 		}
 		wrapper.add(itemGrid, BorderLayout.CENTER);
 
 		return wrapper;
+	}
+
+	static long totalGeValue(Map<Integer, Integer> items, IntUnaryOperator priceLookup)
+	{
+		long total = 0;
+		for (Map.Entry<Integer, Integer> item : items.entrySet())
+		{
+			total += (long) priceLookup.applyAsInt(item.getKey()) * item.getValue();
+		}
+		return total;
 	}
 
 	private JLabel buildItemIcon(int itemId, int quantity)
