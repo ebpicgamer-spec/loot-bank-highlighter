@@ -69,8 +69,16 @@ Click the eye button again to restore the normal bank view.
 
 ## Configuration
 
-- **Single source selection** controls whether only one source can be pinned at a time.
-- **Persist loot records** controls whether tracked records survive a RuneLite restart.
+- **Track new loot** pauses or resumes recording new drops. Existing records, history imports, and bank filtering remain available.
+- **Save loot between sessions** controls whether records are saved and loaded across restarts. Turning it off does not delete previously saved history.
+- One source can be pinned at a time. Pinning another replaces the current selection.
+- Sorting, pinned-first ordering, and collapsing records are available in the sidebar.
+
+### Repairing previously doubled totals
+
+The old version counted some drops twice. This update prevents new duplicates but leaves existing history intact. To repair an affected source, first ensure the built-in Loot Tracker has accurate remembered history with **Remember loot** enabled. Clear that source using its **x** button in Loot Bank Highlighter, then select **Import Loot Tracker History**. Importing without clearing cannot lower inflated totals. Do not clear records that you cannot recover from Loot Tracker.
+
+Loot Tracker must be enabled for live tracking; it is now a plugin dependency.
 
 ## Important notes
 
