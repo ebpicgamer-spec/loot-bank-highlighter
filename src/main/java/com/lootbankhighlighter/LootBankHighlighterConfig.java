@@ -14,6 +14,7 @@ public interface LootBankHighlighterConfig extends Config
 		keyName = "highlightColor",
 		name = "Highlight color",
 		description = "Color used to outline matching items in the bank",
+		hidden = true,
 		position = 1
 	)
 	default Color highlightColor()
@@ -25,6 +26,7 @@ public interface LootBankHighlighterConfig extends Config
 		keyName = "fillColor",
 		name = "Fill color",
 		description = "Fill color used behind matching items in the bank",
+		hidden = true,
 		position = 2
 	)
 	default Color fillColor()
@@ -36,6 +38,7 @@ public interface LootBankHighlighterConfig extends Config
 		keyName = "onlyOneSourceAtATime",
 		name = "Single source selection",
 		description = "Only one loot source can be pinned/highlighted at a time (like a single loadout)",
+		hidden = true,
 		position = 3
 	)
 	default boolean onlyOneSourceAtATime()
@@ -44,8 +47,19 @@ public interface LootBankHighlighterConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "trackNewLoot",
+		name = "Track new loot",
+		description = "Record new drops from Loot Tracker. Disable to pause tracking without removing saved records or bank filtering.",
+		position = 0
+	)
+	default boolean trackNewLoot()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "persistRecordsAcrossSessions",
-		name = "Persist loot records",
+		name = "Save loot between sessions",
 		description = "Save aggregated loot records to the config profile so they survive a client restart",
 		position = 4
 	)

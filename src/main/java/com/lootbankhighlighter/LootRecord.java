@@ -31,6 +31,11 @@ public class LootRecord
 		killCount++;
 	}
 
+	public void addKillCount(int amount)
+	{
+		killCount = saturatedAdd(killCount, Math.max(0, amount));
+	}
+
 	public boolean mergeSnapshot(int importedKillCount, Map<Integer, Integer> importedItems)
 	{
 		boolean changed = false;

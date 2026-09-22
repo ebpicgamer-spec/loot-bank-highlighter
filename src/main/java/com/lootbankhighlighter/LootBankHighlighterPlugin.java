@@ -34,11 +34,11 @@ import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.events.NpcLootReceived;
-import net.runelite.client.events.PlayerLootReceived;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.PluginDependency;
+import net.runelite.client.plugins.loottracker.LootTrackerPlugin;
 import net.runelite.client.plugins.bank.BankSearch;
 import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.client.ui.ClientToolbar;
@@ -46,6 +46,7 @@ import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
 
 @Slf4j
+@PluginDependency(LootTrackerPlugin.class)
 @PluginDescriptor(
 		name = "Loot Bank Highlighter",
 		description = "Pin a Loot Tracker entry with the eye icon and see it filtered into its own view in your bank, like an Inventory Setups loadout",
@@ -80,7 +81,7 @@ public class LootBankHighlighterPlugin extends Plugin
 	private ConfigManager configManager;
 
 	@Inject
-	private LootBankHighlighterConfig config;
+	LootBankHighlighterConfig config;
 
 	@Inject
 	private Gson gson;
@@ -159,33 +160,21 @@ public class LootBankHighlighterPlugin extends Plugin
 	}
 
 	@Subscribe
-	public void onNpcLootReceived(NpcLootReceived event)
-	{
-		String source = event.getNpc().getName() != null ? event.getNpc().getName() : "Unknown NPC";
-		record(source, event.getItems().stream()
-				.collect(java.util.stream.Collectors.toMap(i -> i.getId(), i -> i.getQuantity(), Integer::sum)));
-	}
-
-	@Subscribe
-	public void onPlayerLootReceived(PlayerLootReceived event)
-	{
-		String source = event.getPlayer().getName() != null ? event.getPlayer().getName() : "Unknown player";
-		record(source, event.getItems().stream()
-				.collect(java.util.stream.Collectors.toMap(i -> i.getId(), i -> i.getQuantity(), Integer::sum)));
-	}
-
-	@Subscribe
 	public void onLootReceived(LootReceived event)
 	{
+		if (!config.trackNewLoot())
+		{
+			return;
+		}
 		String source = event.getName();
 		record(source, event.getItems().stream()
-				.collect(java.util.stream.Collectors.toMap(i -> i.getId(), i -> i.getQuantity(), Integer::sum)));
+				.collect(java.util.stream.Collectors.toMap(i -> i.getId(), i -> i.getQuantity(), Integer::sum)), event.getAmount());
 	}
 
-	private void record(String source, Map<Integer, Integer> items)
+	void record(String source, Map<Integer, Integer> items, int amount)
 	{
 		LootRecord rec = lootRecords.computeIfAbsent(source, LootRecord::new);
-		rec.incrementKillCount();
+		rec.addKillCount(amount);
 		items.forEach(rec::addItem);
 		saveRecords();
 		SwingUtilities.invokeLater(this::refreshPanel);
@@ -345,10 +334,7 @@ public class LootBankHighlighterPlugin extends Plugin
 		}
 		else
 		{
-			if (config.onlyOneSourceAtATime())
-			{
-				selectedSources.clear();
-			}
+			selectedSources.clear();
 
 			selectedSources.add(sourceName);
 
@@ -465,7 +451,7 @@ public class LootBankHighlighterPlugin extends Plugin
 			{
 				current.restoreDeleted(deleted.record);
 			}
-			if (deleted.pinned && (!config.onlyOneSourceAtATime() || selectedSources.isEmpty())
+			if (deleted.pinned && selectedSources.isEmpty()
 				&& !selectedSources.contains(source))
 			{
 				toggleSelected(source);
