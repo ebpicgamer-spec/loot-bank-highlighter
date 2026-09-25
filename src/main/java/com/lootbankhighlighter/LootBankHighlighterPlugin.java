@@ -399,6 +399,34 @@ public class LootBankHighlighterPlugin extends Plugin
 		return combined;
 	}
 
+	public void removeItem(String sourceName, int itemId)
+	{
+		clientThread.invoke(() ->
+		{
+			LootRecord record = lootRecords.get(sourceName);
+			if (record == null || record.getItems().remove(itemId) == null)
+			{
+				return;
+			}
+
+			// Empty sources are hidden in the sidebar, so release their pin as well.
+			if (record.isEmpty())
+			{
+				selectedSources.remove(sourceName);
+				if (sourceName.equals(activeTabSource))
+				{
+					deactivateTabView();
+				}
+			}
+			else if (sourceName.equals(activeTabSource))
+			{
+				bankSearch.layoutBank();
+			}
+			saveRecords();
+			refreshPanel();
+		});
+	}
+
 	public void clearRecord(String sourceName)
 	{
 		clientThread.invoke(() ->
