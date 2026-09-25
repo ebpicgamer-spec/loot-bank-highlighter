@@ -217,15 +217,8 @@ public class LootBankHighlighterPlugin extends Plugin
 	@Subscribe
 	public void onScriptPostFired(ScriptPostFired event)
 	{
-		if (event.getScriptId() == ScriptID.BANKMAIN_SEARCHING)
-		{
-			if (activeTabSource != null)
-			{
-				client.getIntStack()[client.getIntStackSize() - 1] = 1; // keep bank in "searching" state
-			}
-			return;
-		}
-
+		// Leave BANKMAIN_SEARCHING alone: pinning loot is not a native text search.
+		// Forcing its result also forces the search button on and prevents opening input.
 		if (event.getScriptId() != ScriptID.BANKMAIN_FINISHBUILDING || activeTabSource == null)
 		{
 			return;
@@ -254,7 +247,10 @@ public class LootBankHighlighterPlugin extends Plugin
 		}
 
 		LootRecord record = lootRecords.get(activeTabSource);
-		Set<Integer> matchIds = record == null ? Collections.emptySet() : record.getItems().keySet();
+		// Loot Tracker preserves noted IDs, but deposited notes become unnoted bank items.
+		// Normalize only for matching, preserving the saved drops and quantities.
+		Set<Integer> matchIds = record == null ? Collections.emptySet() : record.getItems().keySet()
+				.stream().map(itemManager::canonicalize).collect(Collectors.toSet());
 		net.runelite.api.ItemContainer bank = client.getItemContainer(InventoryID.BANK);
 		Item[] bankItems = bank == null ? new Item[0] : bank.getItems();
 
@@ -281,7 +277,10 @@ public class LootBankHighlighterPlugin extends Plugin
 
 			// A stale widget may still have this item ID even though its slot is empty.
 			// Validate the exact slot so redepositing the item cannot revive that widget.
-			if (matchIds.contains(itemId) && isCurrentBankSlot(bankItems, widget.getIndex(), itemId))
+			// The native rebuild has already applied text/value search and bank tab visibility.
+			// Narrow that result instead of reviving items that native search excluded.
+			if (!widget.isSelfHidden() && matchIds.contains(itemManager.canonicalize(itemId))
+					&& isCurrentBankSlot(bankItems, widget.getIndex(), itemId))
 			{
 				int adjX = (placed % ITEMS_PER_ROW) * ITEM_HORIZONTAL_SPACING + ITEM_ROW_START;
 				int adjY = (placed / ITEMS_PER_ROW) * ITEM_VERTICAL_SPACING;
@@ -398,6 +397,34 @@ public class LootBankHighlighterPlugin extends Plugin
 			}
 		}
 		return combined;
+	}
+
+	public void removeItem(String sourceName, int itemId)
+	{
+		clientThread.invoke(() ->
+		{
+			LootRecord record = lootRecords.get(sourceName);
+			if (record == null || record.getItems().remove(itemId) == null)
+			{
+				return;
+			}
+
+			// Empty sources are hidden in the sidebar, so release their pin as well.
+			if (record.isEmpty())
+			{
+				selectedSources.remove(sourceName);
+				if (sourceName.equals(activeTabSource))
+				{
+					deactivateTabView();
+				}
+			}
+			else if (sourceName.equals(activeTabSource))
+			{
+				bankSearch.layoutBank();
+			}
+			saveRecords();
+			refreshPanel();
+		});
 	}
 
 	public void clearRecord(String sourceName)

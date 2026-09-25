@@ -21,6 +21,8 @@ import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 import javax.swing.JComboBox;
 import javax.swing.JCheckBox;
 import javax.swing.JOptionPane;
@@ -315,7 +317,7 @@ public class LootBankHighlighterPanel extends PluginPanel
 		itemGrid.setOpaque(false);
 		for (Map.Entry<Integer, Integer> entry : items.entrySet())
 		{
-			itemGrid.add(buildItemIcon(entry.getKey(), entry.getValue()));
+			itemGrid.add(buildItemIcon(source, entry.getKey(), entry.getValue()));
 		}
 		wrapper.add(itemGrid, BorderLayout.CENTER);
 
@@ -332,9 +334,15 @@ public class LootBankHighlighterPanel extends PluginPanel
 		return total;
 	}
 
-	private JLabel buildItemIcon(int itemId, int quantity)
+	private JLabel buildItemIcon(String source, int itemId, int quantity)
 	{
 		JLabel label = new JLabel();
+		JPopupMenu menu = new JPopupMenu();
+		JMenuItem remove = new JMenuItem("Remove item");
+		remove.setToolTipText("Remove this entire item stack from this loot source");
+		remove.addActionListener(e -> plugin.removeItem(source, itemId));
+		menu.add(remove);
+		label.setComponentPopupMenu(menu);
 		label.setToolTipText("Loading item details...");
 		clientThread.invoke(() ->
 		{
