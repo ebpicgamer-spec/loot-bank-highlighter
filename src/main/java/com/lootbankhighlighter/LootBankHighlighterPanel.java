@@ -15,7 +15,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.Comparator;
-import java.util.function.IntUnaryOperator;
+import java.util.function.IntToLongFunction;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
@@ -172,7 +172,7 @@ public class LootBankHighlighterPanel extends PluginPanel
 			List<LootRecord> records = new ArrayList<>();
 			Map<String, Long> totals = new HashMap<>();
 			Set<String> pins = new HashSet<>(plugin.getSelectedSources());
-			Map<Integer, Integer> prices = new HashMap<>();
+			Map<Integer, Long> prices = new HashMap<>();
 			for (LootRecord live : plugin.getLootRecords().values())
 			{
 				LootRecord record = live.copy();
@@ -324,12 +324,12 @@ public class LootBankHighlighterPanel extends PluginPanel
 		return wrapper;
 	}
 
-	static long totalGeValue(Map<Integer, Integer> items, IntUnaryOperator priceLookup)
+	static long totalGeValue(Map<Integer, Integer> items, IntToLongFunction priceLookup)
 	{
 		long total = 0;
 		for (Map.Entry<Integer, Integer> item : items.entrySet())
 		{
-			total += (long) priceLookup.applyAsInt(item.getKey()) * item.getValue();
+			total += priceLookup.applyAsLong(item.getKey()) * item.getValue();
 		}
 		return total;
 	}
@@ -363,7 +363,7 @@ public class LootBankHighlighterPanel extends PluginPanel
 		return label;
 	}
 
-	static String buildToolTip(int itemId, String name, int quantity, int gePrice, int haPrice)
+	static String buildToolTip(int itemId, String name, int quantity, long gePrice, long haPrice)
 	{
 		String escapedName = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
 		StringBuilder tooltip = new StringBuilder("<html>");
@@ -379,10 +379,10 @@ public class LootBankHighlighterPanel extends PluginPanel
 		return tooltip.append("</html>").toString();
 	}
 
-	private static void appendPrice(StringBuilder tooltip, String type, int quantity, int unitPrice)
+	private static void appendPrice(StringBuilder tooltip, String type, int quantity, long unitPrice)
 	{
 		tooltip.append("<br>").append(type).append(": ")
-			.append(QuantityFormatter.quantityToStackSize((long) unitPrice * quantity));
+			.append(QuantityFormatter.quantityToStackSize(unitPrice * quantity));
 		if (quantity > 1)
 		{
 			tooltip.append(" (").append(QuantityFormatter.quantityToStackSize(unitPrice)).append(" ea)");

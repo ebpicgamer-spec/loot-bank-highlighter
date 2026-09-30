@@ -17,6 +17,15 @@ public class LootTooltipTest
 	}
 
 	@Test
+	public void pricesAboveIntegerLimitKeepTheirFullValue()
+	{
+		assertEquals(6_000_000_000L, LootBankHighlighterPanel.totalGeValue(
+			Map.of(1, 2), id -> 3_000_000_000L));
+		String tooltip = LootBankHighlighterPanel.buildToolTip(-1, "Example", 2, 3_000_000_000L, 0);
+		assertTrue(tooltip.contains("GE: 6B (3B ea)"));
+	}
+
+	@Test
 	public void emptyAndUnpricedSourcesHaveZeroValue()
 	{
 		assertEquals(0L, LootBankHighlighterPanel.totalGeValue(Map.of(), id -> 100));
