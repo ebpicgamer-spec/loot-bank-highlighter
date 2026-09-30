@@ -37,8 +37,6 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.PluginDependency;
-import net.runelite.client.plugins.loottracker.LootTrackerPlugin;
 import net.runelite.client.plugins.bank.BankSearch;
 import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.client.ui.ClientToolbar;
@@ -46,7 +44,6 @@ import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
 
 @Slf4j
-@PluginDependency(LootTrackerPlugin.class)
 @PluginDescriptor(
 		name = "Loot Bank Highlighter",
 		description = "Pin a Loot Tracker entry with the eye icon and see it filtered into its own view in your bank, like an Inventory Setups loadout",

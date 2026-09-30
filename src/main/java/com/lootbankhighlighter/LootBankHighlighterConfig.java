@@ -49,7 +49,7 @@ public interface LootBankHighlighterConfig extends Config
 	@ConfigItem(
 		keyName = "trackNewLoot",
 		name = "Track new loot",
-		description = "Record new drops from Loot Tracker. Disable to pause tracking without removing saved records or bank filtering.",
+		description = "Record new drops while RuneLite Loot Tracker is enabled. Disable to pause tracking without removing saved records or bank filtering.",
 		position = 0
 	)
 	default boolean trackNewLoot()
